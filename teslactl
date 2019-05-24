@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+
+__author__ = 'Vlad Seagal'
+__date__ = "02/27/2019"
+
+"""
+This program gets data and sends commands to your car.
+"""
+
+import datetime
+import sys
+import tesla_api
+import getopt
+import json
+
+
+current_day = datetime.date.today()
+# Car vars
+vehicle_id = str(tesla_api.get_car_info('id'))
+base_vid_url = tesla_api.base_url + vehicle_id + '/'
+wake_up_url = base_vid_url + 'wake_up'
+state_url = base_vid_url + 'data_request/'
+command_url = base_vid_url + 'command/'
+
+# Supported command lists
+data_request_list = ["charge_state", "climate_state", "drive_state", "vehicle_state", "vehicle_config", "gui_settings"]
+charge_commands = ["set_charge_limit", "charge_standard", "charge_max_range", "charge_start", "charge_stop"]
+climate_commands = ["auto_conditioning_start", "auto_conditioning_stop", "set_temps",
+                    "remote_steering_wheel_heater_request", "remote_seat_heater_request"]
+misc_commands = ["actuate_trunk", "speed_limit_activate", "speed_limit_deactivate", "speed_limit_set_limit",
+                 "speed_limit_clear_pin", "set_valet_mode", "reset_valet_pin", "set_sentry_mode"]
+commands_list = charge_commands + climate_commands + misc_commands
+generic_command_list = ["vehicle_data", "mobile_enabled", "nearby_charging_sites"]
+
+
+def usage():
+    print("\nUsage: %s [-c <command>] [ -a key=value ]\n" % sys.argv[0])
+
+    print("\t\tVehicle information commands:")
+    print("\t\t\t" + ", ".join(data_request_list) + "\n")
+
+    print("\t\tCharging commands:")
+    print("\t\t\t" + ", ".join(charge_commands))
+
+    print("\n\t\tClimate commands:")
+    for i in range(int(len(misc_commands)/3 + 1)):
+        print("\t\t\t" + ", ".join(climate_commands[i*3:(i+1)*3]))
+
+    print("\t\tMisc commands:")
+    for i in range(int(len(misc_commands)/3 + 1)):
+        print("\t\t\t" + ", ".join(misc_commands[i*3:(i+1)*3]))
+
+    print("\n\t\tGeneric commands:")
+    print("\t\t\twake_up, " + ", ".join(generic_command_list) + "\n")
+    print("Examples:")
+    print("\n\tCharging commands:\n")
+    print("\t\t%s -c [charge_state | charge_standard | charge_max_range | charge_start | charge_stop]" % sys.argv[0])
+    print("\t\t%s -c set_charge_limit -a percent=80" % sys.argv[0])
+    print("\n\tClimate commands:\n")
+    print("\t\t%s -c climate_state" % sys.argv[0])
+    print("\t\t%s -c auto_conditioning_start" % sys.argv[0])
+    print("\t\t%s -c set_temps -a driver_temp=72,passenger_temp=72" % sys.argv[0])
+    print("\t\t%s -c remote_steering_wheel_heater_request -a on=true" % sys.argv[0])
+    print("\t\t%s -c remote_seat_heater_request -a heater=0,level=3" % sys.argv[0])
+    print("\n\tMisc commands:\n")
+    print("\t\t%s -c vehicle_state" % sys.argv[0])
+    print("\t\t%s -c reset_valet_pin" % sys.argv[0])
+    print("\t\t%s -c set_valet_mode -a on=true,password=1234" % sys.argv[0])
+    print("\t\t%s -c set_sentry_mode -a on=true" % sys.argv[0])
+    print("\t\t%s -c speed_limit_set_limit -a limit_mph=75" % sys.argv[0])
+    print("\t\t%s -c speed_limit_activate -a pin=1234" % sys.argv[0])
+    print("\t\t%s -c speed_limit_deactivate -a pin=1234" % sys.argv[0])
+    print("\t\t%s -c speed_limit_clear_pin -a pin=1234" % sys.argv[0])
+    print("\t\t%s -c actuate_trunk -a which_trunk=rear" % sys.argv[0])
+
+
+def print_results(print_data):
+    print(json.dumps(print_data, sort_keys=True, indent=4, separators=(',', ': ')))
+
+
+def f_to_c(temp):
+    return (temp - 32) * 5/9
+
+
+if __name__ == "__main__":
+
+    if len(sys.argv) < 2:
+        usage()
+        sys.exit(0)
+
+    data = {}
+    cmd = ''
+
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "hc:a:")
+    except getopt.GetoptError as g_err:
+        usage()
+        print(g_err)
+        sys.exit(1)
+
+    for opt, arg in opts:
+        if opt in "-h":
+            usage()
+            sys.exit(0)
+        elif opt in "-c":
+            cmd = arg
+        elif opt in "-a":
+            payload_args = arg
+            data = dict(item.split("=") for item in payload_args.split(","))
+            if cmd == 'set_temps':
+                data.update({'driver_temp': f_to_c(int(data['driver_temp']))})
+                data.update({'passenger_temp': f_to_c(int(data['passenger_temp']))})
+
+        if cmd in data_request_list:
+            url = state_url + cmd
+            print_results(tesla_api.get_data(url))
+
+        if cmd in generic_command_list:
+            url = base_vid_url + cmd
+            print_results(tesla_api.get_data(url))
+
+        if cmd in commands_list:
+            url = command_url + cmd
+            print_results(tesla_api.exec_command(url, data))
+
+        if cmd == "wake_up":
+            print_results(tesla_api.exec_command(wake_up_url, data))
